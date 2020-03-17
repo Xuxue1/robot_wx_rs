@@ -1,12 +1,16 @@
-use actix_web::{get, post, HttpResponse, Result, HttpRequest};
-use bytes::{Bytes};
+use actix_web::{get, post, App, HttpRequest, HttpResponse, HttpServer, Result};
+use bytes::Bytes;
+use config::Config;
+use config::File;
+use env_logger;
+use log::info;
 use std::collections::HashMap;
+use std::env;
 use std::str;
-use quick_xml::de::from_str;
-use wx_robot::serialize::Xml;
-use std::error::Error;
-
-
+use std::thread;
+use wx_robot::serialize::CONFIG;
+use wx_robot::serialize::MENU;
+use wx_robot::serialize::{DeleteMeuResponse, SetMeuResponse, TokenResponse, Xml};
 
 #[get("/api/response")]
 async fn response_token(req: HttpRequest) -> Result<HttpResponse> {
@@ -35,56 +39,150 @@ async fn response_msg(body: Bytes) -> Result<HttpResponse> {
     let xml = Xml::new(xml_str).unwrap();
     xml.response(|x| {
         Ok(HttpResponse::Ok()
-        .content_type("text/plain")
-        .body(format!("{}", x)))
+            .content_type("text/plain")
+            .body(format!("{}", x)))
     })
 }
 
-async fn modify_menu() -> () {
-    // 1. 请求access_token
-    // 3. 更新菜单
-    let app_id = "";
-    let appsecret = "";
-    let get_token_url = format!("https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid={}&secret={}", app_id, appsecret);
-    let token_map = reqwest::blocking::get(get_token_url.as_str()).unwrap()
-                                            .json::<HashMap<String, String>>().unwrap();
-    let token = token_map.get("access_token").unwrap();
-    // 2. 删除菜单
-    let delete_token_url = format!("https://api.weixin.qq.com/cgi-bin/menu/delete?access_token={}", token);
-    let delete_res = reqwest::blocking::get(delete_token_url.as_str()).unwrap()
-                                            .json::<HashMap<String, String>>().unwrap();
-    let set_menu_url = format!("https://api.weixin.qq.com/cgi-bin/menu/create?access_token={}", token);
-    let client = reqwest::Client::new();
-    let res = client.post("http://httpbin.org/post")
-                    .body("the exact body that is sent")
-                    .send()
-                    .await;
+pub fn request_token(app_id: &str, appsecret: &str) -> String {
+    let client = reqwest::blocking::Client::new();
+    let get_token_url = format!(
+        "https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid={}&secret={}",
+        app_id, appsecret
+    );
+    let token_res: TokenResponse = client
+        .get(get_token_url.as_str())
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    token_res.access_token
 }
 
+pub fn delete_menu(token: &str) -> bool {
+    let client = reqwest::blocking::Client::new();
+    let delete_token_url = format!(
+        "https://api.weixin.qq.com/cgi-bin/menu/delete?access_token={}",
+        token
+    );
+    let delete_res: DeleteMeuResponse = client
+        .get(delete_token_url.as_str())
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    delete_res.errcode == 0
+}
 
-// #[actix_rt::main]
-// async fn main() -> std::io::Result<()> {
-//    HttpServer::new(|| 
-//     App::new()
-//     .service(response_token)
-//     .service(response_msg))
-//        .bind("127.0.0.1:8080")?
-//        .run().await
-// }
+pub fn create_menu(token: &str) -> bool {
+    let client = reqwest::blocking::Client::new();
+    let set_menu_url = format!(
+        "https://api.weixin.qq.com/cgi-bin/menu/create?access_token={}",
+        token
+    );
+    let set_menu_res: SetMeuResponse = client
+        .post(set_menu_url.as_str())
+        .body(MENU.as_str())
+        .send()
+        .unwrap()
+        .json()
+        .unwrap();
+    set_menu_res.errcode == 0
+}
 
-fn main() {
-//     let x = "<xml>
-//     <ToUserName><![CDATA[toUser]]></ToUserName>
-//     <FromUserName><![CDATA[FromUser]]></FromUserName>
-//     <CreateTime>123456789</CreateTime>
-//     <MsgType><![CDATA[event]]></MsgType>
-//     <Event><![CDATA[subscribe]]></Event>
-//   </xml>";
-//   println!("{}", wx_robot::serialize::menu.as_str());
-//   let xml: Xml = from_str(x).unwrap();
-//   xml.response();
-  //println!("{}", xml.response());
-  env_logger::init();
-  let mut res = reqwest::blocking::get("https://www.rust-lang.org/").unwrap();
-  res.copy_to(&mut std::io::stdout()).unwrap();
+fn modify_menu() -> bool {
+    let mut settings = Config::default();
+    settings
+        .merge(File::with_name("conf/wx_robot.toml"))
+        .unwrap();
+    let app_id: String = settings.get("app_id").unwrap();
+    let appsecret: String = settings.get("appsecret").unwrap();
+    let token = request_token(app_id.as_str(), appsecret.as_str());
+    info!("Request token: {} success.", token);
+    delete_menu(token.as_str());
+    info!("Delete menu success.");
+    create_menu(token.as_str());
+    info!("Create menue success.");
+    true
+}
+
+#[actix_rt::main]
+async fn main() -> std::io::Result<()> {
+    env::set_var("RUST_LOG", "actix_web=debug,actix_server=info,info");
+    env_logger::init();
+    let host: String = CONFIG.get("host").unwrap();
+    let port: u32 = CONFIG.get("port").unwrap();
+    thread::spawn(move || {
+        modify_menu();
+    });
+    HttpServer::new(|| App::new().service(response_token).service(response_msg))
+        .bind(format!("{}:{}", host, port))?
+        .run()
+        .await
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::create_menu;
+    use crate::delete_menu;
+    use crate::modify_menu;
+    use crate::request_token;
+    use config::Config;
+    use config::File;
+
+    #[test]
+    fn test_config() {
+        let mut settings = Config::default();
+        settings
+            .merge(File::with_name("conf/wx_robot.toml"))
+            .unwrap();
+        let d: bool = settings.get("debug").unwrap();
+        let path: String = settings.get("path").unwrap();
+        assert_eq!(d, false);
+        assert_eq!(path, "hahahaha");
+        println!("{}", d);
+        println!("{}", path);
+    }
+
+    #[test]
+    fn test_request_token() {
+        let mut settings = Config::default();
+        settings
+            .merge(File::with_name("conf/wx_robot.toml"))
+            .unwrap();
+        let app_id: String = settings.get("app_id").unwrap();
+        let appsecret: String = settings.get("appsecret").unwrap();
+        let token = request_token(app_id.as_str(), appsecret.as_str());
+        println!("token: {}", token);
+    }
+
+    #[test]
+    fn test_delete_meu() {
+        let mut settings = Config::default();
+        settings
+            .merge(File::with_name("conf/wx_robot.toml"))
+            .unwrap();
+        let app_id: String = settings.get("app_id").unwrap();
+        let appsecret: String = settings.get("appsecret").unwrap();
+        let token = request_token(app_id.as_str(), appsecret.as_str());
+        assert_eq!(delete_menu(token.as_str()), true);
+    }
+
+    #[test]
+    fn test_set_meu() {
+        let mut settings = Config::default();
+        settings
+            .merge(File::with_name("conf/wx_robot.toml"))
+            .unwrap();
+        let app_id: String = settings.get("app_id").unwrap();
+        let appsecret: String = settings.get("appsecret").unwrap();
+        let token = request_token(app_id.as_str(), appsecret.as_str());
+        assert_eq!(delete_menu(token.as_str()), true);
+        assert_eq!(create_menu(token.as_str()), true);
+    }
+
+    #[test]
+    fn test_modify_meu() {
+        modify_menu();
+    }
 }

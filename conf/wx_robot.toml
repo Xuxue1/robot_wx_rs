@@ -1,0 +1,7 @@
+keyword_res = "conf/msg_response.json"
+menue_res = "conf/meu_response.json"
+subscrib_res = "conf/subscribe.conf"
+menu = "conf/meu.json"
+cache = "conf/cache.txt"
+host = "127.0.0.1"
+port = 8080
