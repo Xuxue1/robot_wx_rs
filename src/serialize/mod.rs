@@ -210,13 +210,12 @@ impl Xml {
         let content_ref = self.content.as_ref();
         if content_ref.is_some() {
             let content = self.content.as_ref();
-            let matchs: Vec<&str> = KEYWORD_RES
+            let matchs: Option<&str> = KEYWORD_RES
                 .iter()
-                .filter(|(_, v)| v.0.is_match(content.unwrap().as_str()))
-                .map(|(_, v)| v.1.as_str())
-                .collect();
-            if matchs.len() > 0 {
-                let res_content = matchs[0];
+                .find(|(_, v)| v.0.is_match(content.unwrap().as_str()))
+                .map(|(_, v)| v.1.as_str());
+            if matchs.is_some() {
+                let res_content = matchs.unwrap();
                 let now = SystemTime::now();
                 if res_content.eq("https://mp.weixin.qq.com/s/T7ol72aZHHrXRluWXm5srA") {
                     return format!(
