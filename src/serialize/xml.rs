@@ -1,88 +1,9 @@
-use config::Config;
 use quick_xml::de::{from_str, DeError};
-use regex::Regex;
 use serde::{Deserialize, Serialize};
-use serde_json;
-use std::collections::{HashMap, HashSet};
-use std::fs::File;
-use std::io::prelude::*;
 use std::option::Option;
-use std::path::Path;
 use std::result::Result;
-use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::fs::OpenOptions;
-
-fn read_file(file_path: &str) -> String {
-    let path = Path::new(file_path);
-    let mut file = match File::open(&path) {
-        Ok(file) => file,
-        Err(_) => panic!("couldn't open {}", file_path),
-    };
-    let mut s = String::new();
-    match file.read_to_string(&mut s) {
-        Ok(_) => s,
-        Err(e) => panic!("Failed read file! {:?}", e),
-    }
-}
-
-pub struct Cache {
-    sub_ids: HashSet<String>,
-    store: String,
-}
-
-impl Cache {
-    pub fn new(store: &str) -> Cache {
-        let s = read_file(store);
-        let ids: HashSet<&str> = s.split("\n").collect();
-        let mut set = HashSet::new();
-        ids.iter().for_each(|x| {
-            set.insert(x.to_string());
-        });
-        Cache {
-            sub_ids: set,
-            store: store.to_string(),
-        }
-    }
-
-    pub fn exist(&mut self, id: &String) -> bool {
-        if self.sub_ids.contains(id) {
-            true
-        } else {
-            // 文件写入
-            let path = Path::new(self.store.as_str());
-            let mut file = match OpenOptions::new().append(true).open(path) {
-                Ok(file) => file,
-                Err(_) => panic!("couldn't open {}", self.store.as_str()),
-            };
-            match file.write_all(format!("{}\n", id).as_bytes()) {
-                Ok(_) => (),
-                Err(e) => panic!("Failed write! {:?}", e),
-            };
-            false
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize, PartialEq)]
-pub struct Xml {
-    #[serde(rename = "ToUserName", default)]
-    pub to_user_name: String, // 消息的目的地
-    #[serde(rename = "FromUserName", default)]
-    pub from_user_name: String, // 消息的来源
-    #[serde(rename = "CreateTime", default)]
-    pub create_time: u64, // 消息的创建时间
-    #[serde(rename = "MsgType", default)]
-    pub msg_type: String, // 公共的字段 msg类型
-    #[serde(rename = "Content", default)]
-    pub content: Option<String>, // 普通消息 内容是发送的内容
-    #[serde(rename = "MsgId", default)]
-    pub msg_id: Option<String>, // 普通消息 内容是msgId
-    #[serde(rename = "Event", default)]
-    pub event: Option<String>, // 菜单点击消息
-    #[serde(rename = "EventKey", default)]
-    pub event_key: Option<String>, // 菜单点击事件的key
-}
+use super::static_ob::*;
 
 #[derive(Debug, Deserialize, PartialEq)]
 pub struct ConfigIteam {
@@ -108,49 +29,24 @@ pub struct SetMeuResponse {
     pub errmsg: String,
 }
 
-lazy_static! {
-    pub static ref CONFIG: Config = {
-        let mut settings = Config::default();
-        settings
-            .merge(config::File::with_name("conf/wx_robot.toml"))
-            .unwrap();
-        settings
-    };
-    pub static ref KEYWORD_RES: HashMap<String, (Regex, String)> = {
-        let keyword_res_path: String = CONFIG.get("keyword_res").unwrap();
-        let data = read_file(keyword_res_path.as_str());
-        let p: Vec<ConfigIteam> = serde_json::from_str(data.as_str()).unwrap();
-        p.iter()
-            .map(|x| {
-                let pattern = x.key.to_string();
-                let regex = Regex::new(pattern.as_str()).unwrap();
-                (
-                    pattern.to_owned(),
-                    (regex.to_owned(), x.response.to_owned()),
-                )
-            })
-            .collect()
-    };
-    pub static ref MENUE_RES: HashMap<String, String> = {
-        let menue_res_path: String = CONFIG.get("menue_res").unwrap();
-        let data = read_file(menue_res_path.as_str());
-        let p: Vec<ConfigIteam> = serde_json::from_str(data.as_str()).unwrap();
-        p.iter()
-            .map(|x| (x.key.to_owned(), x.response.to_owned()))
-            .collect()
-    };
-    pub static ref SUBSCRIBE_RES: String = {
-        let subscrib_path: String = CONFIG.get("subscrib_res").unwrap();
-        read_file(subscrib_path.as_str())
-    };
-    pub static ref MENU: String = {
-        let menu_path: String = CONFIG.get("menu").unwrap();
-        read_file(menu_path.as_str())
-    };
-    pub static ref CACHE: Mutex<Cache> = {
-        let cache_path: String = CONFIG.get("cache").unwrap();
-        Mutex::new(Cache::new(cache_path.as_str()))
-    };
+#[derive(Debug, Deserialize, Serialize, PartialEq)]
+pub struct Xml {
+    #[serde(rename = "ToUserName", default)]
+    pub to_user_name: String, // 消息的目的地
+    #[serde(rename = "FromUserName", default)]
+    pub from_user_name: String, // 消息的来源
+    #[serde(rename = "CreateTime", default)]
+    pub create_time: u64, // 消息的创建时间
+    #[serde(rename = "MsgType", default)]
+    pub msg_type: String, // 公共的字段 msg类型
+    #[serde(rename = "Content", default)]
+    pub content: Option<String>, // 普通消息 内容是发送的内容
+    #[serde(rename = "MsgId", default)]
+    pub msg_id: Option<String>, // 普通消息 内容是msgId
+    #[serde(rename = "Event", default)]
+    pub event: Option<String>, // 菜单点击消息
+    #[serde(rename = "EventKey", default)]
+    pub event_key: Option<String>, // 菜单点击事件的key
 }
 
 impl Xml {
