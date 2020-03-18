@@ -8,9 +8,9 @@ use std::collections::HashMap;
 use std::env;
 use std::str;
 use std::thread;
-use wx_robot::serialize::CONFIG;
-use wx_robot::serialize::MENU;
-use wx_robot::serialize::{DeleteMeuResponse, SetMeuResponse, TokenResponse, Xml};
+use wx_robot::serialize::xml::CONFIG;
+use wx_robot::serialize::xml::MENU;
+use wx_robot::serialize::xml::{DeleteMeuResponse, SetMeuResponse, TokenResponse, Xml};
 
 #[get("/api/response")]
 async fn response_token(req: HttpRequest) -> Result<HttpResponse> {
