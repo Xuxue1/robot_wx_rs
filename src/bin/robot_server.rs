@@ -34,10 +34,10 @@ async fn response_msg(body: Bytes) -> Result<HttpResponse> {
         Ok(v) => v,
         Err(_) => "<xml></xml>",
     };
-    info!("Recive: {}", xml_str);
+    info!("Recive:\n {}", xml_str);
     let xml = Xml::new(xml_str).unwrap();
     xml.response(|x| {
-        info!("Response: {}", x);
+        info!("Response:\n {}", x);
         Ok(HttpResponse::Ok()
             .content_type("text/plain")
             .body(format!("{}", x)))
